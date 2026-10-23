@@ -1,38 +1,61 @@
 # Local-First Task Manager
 
-A small task manager that keeps its data on the device. Tasks live in [IndexedDB](https://developer.mozilla.org/docs/Web/API/IndexedDB_API). After the first visit, a service worker serves the app shell from cache, so the installed app still opens with no network.
+A private task list that stays on this device and works offline.
 
-**Live demo:** https://taha080.github.io/local-first-task-manager/
+**Live app:** [https://taha080.github.io/local-first-task-manager/](https://taha080.github.io/local-first-task-manager/)
 
-There is no account and no backend. Export a JSON file if you want a backup you can import later, including on another browser.
+## What it is
+
+Local-First Task Manager is a browser app for a personal task list. Tasks are saved in this browser with [IndexedDB](https://developer.mozilla.org/docs/Web/API/IndexedDB_API). The published site is a static page on GitHub Pages. After the first successful visit, you can keep opening the app when the network is unavailable, and you can install it as a Progressive Web App.
+
+There is no account and no backend. Task lists are not synced across browsers or devices. Each browser profile keeps its own database. To keep a backup, or to move the list to another browser, export a JSON file and import that file where you want it.
 
 ## Features
 
 - Create, edit, complete, reopen, and delete tasks
-- Filter by status (all, active, done) and by priority
-- Optional due date, priority, notes, and tags
-- Tasks are ordered with active work first, then soonest due date, then priority
-- Overdue and due-today labels use the local calendar date
+- Filter by status (**All**, **Active**, **Done**) and by priority (**Any**, **High**, **Medium**, **Low**)
+- Optional due date, priority, notes, and comma-separated tags
+- Active tasks listed first, then the soonest due date, then priority
+- Overdue and due-today labels based on the local calendar date
 - JSON export and import, with validation that rejects a bad file before it touches the database
 - Installable Progressive Web App (web app manifest and service worker)
-- Works offline after the first successful load
+- Offline use after the first successful load
 
-## Tech stack
+## How it works
 
-| Piece | Choice |
-| --- | --- |
-| Language | TypeScript |
-| UI | HTML, CSS, and DOM APIs (no UI framework) |
-| Build | [Vite](https://vite.dev/) |
-| Storage | IndexedDB in the browser |
-| Offline | Hand-written service worker, generated at build time with the hashed asset list |
-| Install | Web app manifest |
-| Tests | [Vitest](https://vitest.dev/) and [fake-indexeddb](https://github.com/dumbmatter/fakeIndexedDB) |
-| Hosting | GitHub Pages, via GitHub Actions |
+The page is HTML, CSS, and TypeScript, updated with the DOM APIs. [Vite](https://vite.dev/) builds the site. The app has no runtime dependencies. Vite, TypeScript, [Vitest](https://vitest.dev/), and [fake-indexeddb](https://github.com/dumbmatter/fakeIndexedDB) are development dependencies.
 
-The app has no runtime dependencies. Vite, TypeScript, Vitest, and fake-indexeddb are development dependencies.
+### IndexedDB
 
-## Setup
+The database name is `local-first-task-manager`. Version 1 has one object store, `tasks`, keyed by `id`, and an index named `by-status`. Creating, editing, completing, deleting, and importing all read and write that store in the current browser profile. Task data stays on the device. The page does not send it to a server.
+
+### Service worker and offline use
+
+Offline support belongs to the production build. `npm run dev` leaves the service worker unregistered.
+
+Vite’s `base` is `/local-first-task-manager/`, the same prefix as the GitHub Pages project URL. The build writes `dist/sw.js` beside `index.html`. The precache list is the built files plus the files in `public/` (the manifest and icons), excluding `sw.js` itself and any source maps. The page registers that worker in production only:
+
+```ts
+navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, {
+  scope: import.meta.env.BASE_URL,
+});
+```
+
+The worker’s scope is the directory it is served from: `/local-first-task-manager/`. A root URL such as `/sw.js` would point at `https://taha080.github.io/sw.js`, outside this project, so the worker is always addressed under the project path. Its fetch handler handles same-origin GET requests whose path starts with that prefix. Other project sites that share the GitHub Pages origin stay outside this worker.
+
+On install, the worker precaches the app shell (HTML, CSS, JavaScript, the manifest, and the icons). It also stores the directory URL under the same response as `index.html`, so a reload of the Pages URL still opens the app offline. Navigation requests try the network first and fall back to the cache. Other same-origin GET requests under the project path are cache-first, then the network. Cache names start with `lftm-`. When a new build activates, the worker deletes older caches that use that prefix.
+
+The first online visit fills the cache. Later visits can open the shell with no network. Tasks stay in IndexedDB. The service worker does not read the database.
+
+The manifest uses relative `start_url`, `scope`, and icon paths (`./` and `icons/...`). Browsers resolve those against the manifest URL, which already lives under the project path. Installing needs a production visit over HTTPS, a manifest with 192px and 512px icons, and a worker that handles `fetch`. GitHub Pages provides HTTPS. Use the browser’s install control or **Add to Home Screen**. The installed app opens at the Pages URL and uses the same on-device database as the browser profile that installed it.
+
+### Backup file, and no sync
+
+Export and import share one JSON format. `version` must be `1` and `app` must be `local-first-task-manager`. Unknown extra fields are ignored. The importer rebuilds each task from the known fields only. A file may contain at most 5000 tasks and 2,000,000 characters. Any problem returns a list of errors and leaves the stored tasks unchanged. After you confirm, a valid import replaces every stored task in one transaction.
+
+There is no sync protocol, account, or remote copy of the list. Two browsers stay independent until you move a file between them yourself.
+
+## Run it locally
 
 You need Node.js 20 or newer.
 
@@ -43,34 +66,20 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints. Because the app is built for a project site, that URL includes the base path:
+Open the URL Vite prints. The dev server is configured for port 5173 and the project-site base path, so the usual address is:
 
 ```text
 http://localhost:5173/local-first-task-manager/
 ```
 
-The dev server does not register a service worker. Offline behavior is part of the production build. To try that locally:
+To try the production build, including the service worker:
 
 ```bash
 npm run build
 npm run preview
 ```
 
-Then open `http://localhost:4173/local-first-task-manager/`. In the browser devtools, switch the network to offline and reload. The shell should still load, and tasks you already saved should still be there.
-
-## Usage
-
-1. Type a title and, if you want, a due date, priority, tags, and notes. Choose **Add task**.
-2. Use the checkbox to complete a task. Use it again to reopen it.
-3. **Edit** loads the task back into the form. **Save changes** writes it. **Cancel** leaves the stored task alone.
-4. **Delete** asks for confirmation, then removes the task from IndexedDB.
-5. Filter with **All**, **Active**, and **Done**. The priority menu narrows the same list.
-6. **Export** downloads a JSON backup of every task. **Import** checks the file and, if it is valid, replaces the tasks on this device. Import does not merge. A file that fails validation does not change what is already stored.
-7. To install, use the browser's install or "Add to Home Screen" action after the production site has loaded. The installed app opens at the Pages URL and uses the same on-device database as the browser profile that installed it.
-
-The header pill follows `navigator.onLine`. It is only a hint. The task list does not use the network either way.
-
-## Scripts
+Open `http://localhost:4173/local-first-task-manager/`. In the browser developer tools, set the network to offline and reload. The shell should still load, and tasks you already saved should still be there.
 
 | Script | What it does |
 | --- | --- |
@@ -82,62 +91,72 @@ The header pill follows `navigator.onLine`. It is only a hint. The task list doe
 | `npm run typecheck` | Typecheck without emitting files |
 | `npm run icons` | Regenerate the PNG icons with Python 3 (optional; the PNGs are already in the repo) |
 
-## Testing
+## Usage
+
+1. Enter a title. Due date, priority, tags, and notes are optional. Tags are comma-separated, for example `home, errands`. Priority defaults to Medium. Choose **Add task**.
+2. Use the checkbox to complete a task. Use it again to reopen it.
+3. **Edit** loads the task into the form. The heading changes to **Edit task** and the button changes to **Save changes**. **Cancel** clears the form and leaves the stored task as it is.
+4. **Delete** asks you to confirm. The prompt says the delete cannot be undone. Confirming removes the task from IndexedDB.
+5. Filter with **All**, **Active**, and **Done**. The priority menu (**Any**, **High**, **Medium**, or **Low**) narrows the same list.
+6. **Export** downloads `tasks-YYYY-MM-DD.json`, using your local calendar date, with every task. **Import** checks the file. When the file is valid, the app asks you to confirm replacing every task on this device. A file that fails validation leaves the stored tasks unchanged.
+7. To install, open the production site and use the browser’s install control or **Add to Home Screen**.
+
+The header pill shows **Online** or **Offline** from `navigator.onLine`. It reports the browser’s network status. The task list is read from IndexedDB either way.
+
+The list is ordered like this: active tasks come before completed ones; dated tasks come before tasks with no due date, soonest first; priority breaks the next ties (high, then medium, then low); then the most recently updated task; then title; then id.
+
+## Project structure
+
+```text
+index.html                     Page structure
+src/main.ts                    Form, filters, import, and export
+src/render.ts                  Task list DOM
+src/styles.css                 Layout and theme
+src/task.ts                    Validation, sorting, and completion rules
+src/db.ts                      IndexedDB schema and reads/writes
+src/transfer.ts                JSON export and import validation
+src/types.ts                   Shared types and limits
+src/pwa/register.ts            Production service worker registration
+src/pwa/precache.ts            Base-path precache URLs and cache names
+src/pwa/service-worker.ts      Service worker source used by the build
+vite.config.ts                 Base path, Vitest, and the service worker plugin
+public/manifest.webmanifest    Install metadata
+public/icons/                  SVG favicon and PNG install icons
+scripts/generate-icons.py      Optional PNG icon generator
+tests/                         Vitest suites
+.github/workflows/pages.yml    GitHub Pages deploy
+```
+
+## Tests
 
 ```bash
 npm test
 ```
 
-Tests cover three areas:
+Vitest runs in Node and picks up `tests/**/*.test.ts`. Storage tests load fake-indexeddb from `tests/setup.ts`, so they do not need a browser. The test database is deleted before each storage test.
 
-- **Task rules** (`tests/task.test.ts`): creating and editing tasks, completion, status and priority filters, sort order, and due dates.
-- **Import and export** (`tests/transfer.test.ts`): a round trip through the JSON format, and rejection of bad JSON, the wrong version, duplicate ids, impossible dates, and completion fields that disagree with the status.
-- **Storage** (`tests/db.test.ts`): IndexedDB create, update, complete, delete, status index, and replace-all. A failed import must leave the previous rows in place.
+- **Task rules** (`tests/task.test.ts`) cover creating and editing tasks, completion, status and priority filters, sort order, and due dates.
+- **Import and export** (`tests/transfer.test.ts`) cover a round trip through the JSON format, and rejection of bad JSON, the wrong version, duplicate ids, impossible dates, and completion fields that disagree with the status.
+- **Storage** (`tests/db.test.ts`) covers IndexedDB create, update, complete, delete, the `by-status` index, and replace-all. A failed import leaves the previous rows in place. A rejected edit is not written.
+- **Precache** (`tests/precache.test.ts`) checks that precache URLs stay under `/local-first-task-manager/` and that the generated service worker is valid JavaScript.
 
-`tests/precache.test.ts` checks that precache URLs stay under `/local-first-task-manager/` and that the generated service worker is syntactically valid.
+## Task fields
 
-Storage tests use fake-indexeddb, installed from `tests/setup.ts`, so they do not need a browser. The test database is deleted before each storage test.
-
-## Project structure
-
-```text
-index.html                 Page structure
-src/main.ts                Form, filters, import, and export
-src/render.ts              Task list DOM
-src/styles.css             Layout and theme
-src/task.ts                Validation, sorting, and completion rules
-src/db.ts                  IndexedDB schema and reads/writes
-src/transfer.ts            JSON export and import validation
-src/pwa/register.ts        Production service worker registration
-src/pwa/precache.ts        Base-path precache URLs and cache names
-src/pwa/service-worker.ts  Service worker source used by the build
-src/types.ts               Shared types and limits
-vite.config.ts             Base path, Vitest, and the service worker plugin
-public/manifest.webmanifest
-public/icons/              SVG favicon and PNG install icons
-tests/                     Vitest suites
-.github/workflows/pages.yml
-```
-
-## Data model
-
-Each task stored in IndexedDB, and each task in an export file, has this shape:
+Each task in IndexedDB, and each task in an export file, has this shape:
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `id` | string | 1–80 characters: letters, numbers, `_`, `-` |
-| `title` | string | Required, trimmed, at most 200 characters |
-| `notes` | string | May be empty, at most 5000 characters |
-| `status` | `"active"` or `"completed"` | |
-| `priority` | `"low"`, `"medium"`, or `"high"` | Defaults to medium in the form |
-| `dueDate` | `YYYY-MM-DD` or `null` | Calendar date, not a timestamp |
-| `tags` | string[] | At most 12 tags, 40 characters each, case-insensitive duplicates removed |
+| `id` | string | 1–80 characters: letters, numbers, `_`, and `-`. New tasks get a random UUID. |
+| `title` | string | Required. Trimmed, with extra spaces collapsed, at most 200 characters. |
+| `notes` | string | May be empty. At most 5000 characters. |
+| `status` | `"active"` or `"completed"` | The **Done** filter shows completed tasks. |
+| `priority` | `"low"`, `"medium"`, or `"high"` | The form defaults to medium. |
+| `dueDate` | `YYYY-MM-DD` or `null` | A calendar date, with no time and no time zone. |
+| `tags` | string[] | At most 12 tags, 40 characters each. Case-insensitive duplicates are dropped. |
 | `createdAt`, `updatedAt` | ISO-8601 UTC | `YYYY-MM-DDTHH:mm:ss.sssZ` |
-| `completedAt` | that timestamp, or `null` | `null` when active, required when completed |
+| `completedAt` | that timestamp, or `null` | `null` while the task is active. A timestamp is required once it is completed. |
 
-The database name is `local-first-task-manager`. Version 1 has one object store, `tasks`, keyed by `id`, with an index named `by-status`.
-
-### Export file
+An export file looks like this:
 
 ```json
 {
@@ -148,41 +167,13 @@ The database name is `local-first-task-manager`. Version 1 has one object store,
 }
 ```
 
-`version` must be `1` and `app` must be `local-first-task-manager`. Unknown extra fields are ignored. The importer rebuilds each task from the known fields only. A file may contain at most 5000 tasks and 2,000,000 characters. Any problem produces a list of errors and does not write.
-
-## Offline and PWA
-
-The production app is served from a subpath:
-
-```text
-https://taha080.github.io/local-first-task-manager/
-```
-
-Vite's `base` is `/local-first-task-manager/`, so script, style, icon, and manifest URLs include that prefix. A root-absolute URL such as `/sw.js` would point at `https://taha080.github.io/sw.js`, which is a different site, so the worker would never install.
-
-The manifest uses relative `start_url`, `scope`, and icon paths (`./` and `icons/...`). Browsers resolve those against the manifest URL, which already lives under the project path.
-
-The service worker is not a source file you edit by hand. The Vite build writes `dist/sw.js` beside `index.html` and fills it with the files that were just emitted, including the manifest and icons. Registration uses that same base:
-
-```ts
-navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, {
-  scope: import.meta.env.BASE_URL,
-});
-```
-
-The default scope of a worker is the directory it is served from. Here that directory is `/local-first-task-manager/`, which is exactly the project site. The fetch handler also ignores any path that does not start with that prefix. Several GitHub project sites share one origin, and this worker must not cache or intercept them.
-
-On install, the worker precaches the shell (HTML, CSS, JS, manifest, icons) and stores the directory URL under the same body as `index.html`, so a reload of the Pages URL works offline. Navigation requests try the network first and fall back to the cache. Other same-origin GET requests are cache-first, then network. The cache name starts with `lftm-`. On activate, the worker deletes only older caches with that prefix.
-
-The worker is registered in production builds only. The first online visit is what fills the cache. Later visits can be offline. Tasks themselves are not in the cache; they stay in IndexedDB, which the service worker does not read.
-
-Installing needs a production visit over HTTPS (GitHub Pages provides that), a manifest with 192px and 512px icons, and a worker that handles `fetch`. Use **Add to Home Screen** or the install icon in the address bar.
+An empty `tasks` array is valid and imports as an empty list.
 
 ## GitHub Pages
 
-Pushes to `main` run `.github/workflows/pages.yml`. The workflow installs dependencies, runs the tests, builds `dist/`, and deploys that folder with `actions/configure-pages`, `actions/upload-pages-artifact`, and `actions/deploy-pages`.
+Pushes to `main`, and manual runs, use `.github/workflows/pages.yml`. The workflow runs `npm ci`, `npm test`, and `npm run build` on Node.js 22, then deploys the `dist/` folder with `actions/configure-pages`, `actions/upload-pages-artifact`, and `actions/deploy-pages`.
 
-In the repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The first run may ask you to approve the `github-pages` environment. After it succeeds, the site is at the live demo link above.
+In the repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The first run may ask you to approve the `github-pages` environment. After a successful deploy, the site is at the live link above.
 
 ## License
 
