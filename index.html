@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A local-first task manager. Tasks stay in this browser and the app works offline."
+    />
+    <!--
+      Icon and manifest links include the project base path so they resolve
+      under /local-first-task-manager/ on GitHub Pages.
+    -->
+    <meta name="theme-color" content="#1e4d3a" />
+    <link rel="icon" href="%BASE_URL%icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="%BASE_URL%icons/icon-192.png" />
+    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
+    <title>Local-First Task Manager</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#task-list">Skip to tasks</a>
+    <header class="masthead">
+      <div class="masthead-inner">
+        <div class="brand">
+          <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
+            <rect width="48" height="48" rx="12" fill="#f4efe4" />
+            <path
+              d="M14 25.5 21 32.5 34 16.5"
+              fill="none"
+              stroke="#1e4d3a"
+              stroke-width="3.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <h1>
+            <span class="eyebrow">Local-first</span>
+            <span class="title">Task manager</span>
+          </h1>
+        </div>
+        <div class="mast-actions">
+          <p id="connection-status" class="status-pill" role="status" data-state="online">Online</p>
+          <button id="export-button" class="button button-quiet" type="button">Export</button>
+          <button id="import-button" class="button button-quiet" type="button">Import</button>
+          <input
+            id="import-file"
+            class="visually-hidden"
+            type="file"
+            accept="application/json,.json"
+            tabindex="-1"
+          />
+        </div>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="panel" aria-labelledby="composer-title">
+        <div class="section-heading">
+          <h2 id="composer-title">Add a task</h2>
+          <p id="composer-help">
+            Saved in IndexedDB on this device. Nothing is uploaded.
+          </p>
+        </div>
+        <form id="task-form" autocomplete="off">
+          <div class="field field-title">
+            <label for="title">Title</label>
+            <input
+              id="title"
+              name="title"
+              type="text"
+              maxlength="200"
+              required
+              placeholder="What needs doing?"
+            />
+          </div>
+          <div class="field">
+            <label for="due">Due date</label>
+            <input id="due" name="due" type="date" />
+          </div>
+          <div class="field">
+            <label for="priority">Priority</label>
+            <select id="priority" name="priority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="tags">Tags</label>
+            <input id="tags" name="tags" type="text" placeholder="home, errands" />
+          </div>
+          <div class="field field-notes">
+            <label for="notes">Notes</label>
+            <textarea id="notes" name="notes" maxlength="5000" rows="3" placeholder="Optional details"></textarea>
+          </div>
+          <div class="form-actions">
+            <button id="save-button" class="button button-primary" type="submit">Add task</button>
+            <button id="cancel-edit" class="button button-ghost" type="button" hidden>Cancel</button>
+          </div>
+        </form>
+        <p id="form-error" class="form-error" role="alert" hidden></p>
+      </section>
+
+      <section class="panel" aria-labelledby="list-title">
+        <div class="list-toolbar">
+          <div class="section-heading">
+            <h2 id="list-title">Your tasks</h2>
+            <p id="open-count">0 open</p>
+          </div>
+          <div class="filters">
+            <div class="segment" role="radiogroup" aria-label="Filter by status">
+              <button type="button" role="radio" data-status="all" aria-checked="true" tabindex="0">
+                All <span id="count-all">0</span>
+              </button>
+              <button type="button" role="radio" data-status="active" aria-checked="false" tabindex="-1">
+                Active <span id="count-active">0</span>
+              </button>
+              <button type="button" role="radio" data-status="completed" aria-checked="false" tabindex="-1">
+                Done <span id="count-completed">0</span>
+              </button>
+            </div>
+            <label class="priority-filter">
+              <span>Priority</span>
+              <select id="priority-filter">
+                <option value="all">Any</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <p id="banner" class="banner" role="status"></p>
+        <div id="empty-state" class="empty">
+          <svg class="empty-mark" viewBox="0 0 48 48" aria-hidden="true">
+            <rect x="4" y="4" width="40" height="40" rx="12" fill="none" stroke="currentColor" stroke-width="2" />
+            <path
+              d="M16 25.5 21.5 31 33 17.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <h3 id="empty-title">Nothing on the list yet</h3>
+          <p id="empty-copy">Add a task above. It stays in this browser, even when you are offline.</p>
+        </div>
+        <ul id="task-list" class="task-list" aria-label="Tasks" hidden></ul>
+      </section>
+    </main>
+
+    <footer class="colophon">
+      <p>Works offline after the first visit. Export a JSON file if you want a backup.</p>
+    </footer>
+    <noscript>
+      <p class="noscript">
+        This task manager needs JavaScript. Tasks are stored in this browser and are not sent to a server.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
